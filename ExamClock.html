@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<!--
+v1 Mik Walker
+v2 Samuel Moore, Mar 2026
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ExamClock</title>
+<style>
+:root{--gap:10px;--border:2px solid #cfcfcf;--bg:#f5f5f5;--panel:#ffffff;--digital-scale:0.75;--notes-scale:1.5}
+html,body{height:100%}
+body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden;color:#111}
+*{box-sizing:border-box}
+.container,.rightCol,.section,.panel{min-height:0;min-width:0}
+.container{display:grid;grid-template-columns:2fr 1fr 1fr;gap:var(--gap);height:100dvh;height:100svh;padding:var(--gap)}
+.panel{background:var(--panel);border:var(--border);border-radius:8px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.rightCol{display:grid;grid-template-rows:1fr 1fr;grid-auto-rows:1fr;gap:var(--gap);height:100%}
+.section{background:var(--panel);border:var(--border);border-radius:8px;position:relative;display:grid;grid-template-rows:auto auto minmax(0,1fr);align-items:center;justify-items:center;padding:8px;overflow:hidden;min-height:0;cursor:pointer}
+.clockBox{width:100%;height:100%;position:relative;display:flex;align-items:center;justify-content:center}
+.clockBox svg{display:block;cursor:pointer}
+.clickOverlay{position:absolute;inset:0;z-index:5;background:transparent;cursor:pointer}
+.digitalCenter{position:absolute;transform:translate(-50%,-50%);font-weight:800;font-variant-numeric:tabular-nums;background:#000;color:#fff;padding:4px 8px;border-radius:10px;border:1px solid #000;letter-spacing:.02em;line-height:1.05;pointer-events:none;white-space:nowrap}
+.digitalSmall{font-weight:900;font-variant-numeric:tabular-nums;font-size:clamp(18px,4.2vmin,44px);background:#000;color:#fff;padding:.25em .6em;border-radius:10px;letter-spacing:.02em;line-height:1.1;text-align:center;white-space:nowrap}
+.header{font-size:clamp(18px,4.8vmin,48px);font-weight:900;text-align:center;margin:4px 0;color:#000}
+.btnPanel{position:absolute;left:8px;right:8px;bottom:8px;display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px;background:rgba(255,255,255,.95);border:1px solid #ccc;border-radius:8px;padding:8px;visibility:hidden;z-index:10;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.btnPanel button{font-size:clamp(12px,1.6vmin,16px);padding:6px 10px;cursor:pointer;border-radius:6px;border:1px solid #bbb;background:#fff}
+.notesWrap{display:grid;grid-template-rows:auto auto auto 1fr auto;gap:8px;padding:10px;width:100%;height:100%}
+.notesLabel{font-size:calc(clamp(14px,2.6vmin,22px)*var(--notes-scale));font-weight:800;margin-top:4px}
+.inputText,.inputArea,.notesArea{width:100%;border:var(--border);border-radius:8px;padding:10px;font-size:calc(clamp(14px,2.2vmin,22px)*var(--notes-scale));line-height:1.35;outline:none;background:#fff;color:#000}
+.inputText{height:2.6em}
+.inputArea{height:4.8em;resize:vertical}
+.notesArea{height:100%;resize:none;overflow:auto}
+.notesControls{display:flex;gap:10px;justify-content:center;padding-top:4px}
+.notesControls button{padding:10px 14px;font-size:clamp(12px,1.8vmin,16px);border:1px solid #bbb;border-radius:8px;background:#fff;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="mainClockArea" class="panel">
+    <div class="clockBox" id="mainClockBox">
+      <svg id="mainClock" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" aria-label="Live analogue clock"></svg>
+      <div id="mainDigital" class="digitalCenter" aria-live="off"></div>
+      <div id="mainClickOverlay" class="clickOverlay" aria-hidden="true"></div>
+      <div id="mainButtons" class="btnPanel" role="group" aria-label="Adjust main clock time">
+        <button data-target="main" data-delta="1">+1 min</button>
+        <button data-target="main" data-delta="-1">-1 min</button>
+        <button data-target="main" data-action="reset">Reset</button>
+        <button data-target="main" data-delta="10">+10 min</button>
+        <button data-target="main" data-delta="-10">-10 min</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="notesWrap">
+      <div>
+        <div class="notesLabel">Centre Number</div>
+        <input id="centreNumber" class="inputText" placeholder="Enter centre number…"/>
+      </div>
+      <div>
+        <div class="notesLabel">Subject</div>
+        <textarea id="subject" class="inputArea" placeholder="Enter subject…"></textarea>
+      </div>
+      <div>
+        <div class="notesLabel">Paper Number</div>
+        <textarea id="paperNumber" class="inputArea" placeholder="Enter paper number…"></textarea>
+      </div>
+      <div style="display:flex;flex-direction:column;min-height:0;">
+        <div class="notesLabel">Notes</div>
+        <textarea id="notes" class="notesArea" placeholder="Type notes…"></textarea>
+      </div>
+      <div class="notesControls">
+        <button id="fullscreenBtn" title="Toggle fullscreen">Enter Fullscreen</button>
+        <button id="extendedToggle" aria-pressed="false">Extra Time</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="rightCol">
+    <div class="section" id="startSection">
+      <div class="header">Start</div>
+      <div id="startDigital" class="digitalSmall">--:--</div>
+      <div class="clockBox" id="startClockBox">
+        <svg id="startClock" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" aria-label="Start time analogue clock"></svg>
+        <div id="startButtons" class="btnPanel" role="group" aria-label="Adjust start time">
+          <button data-target="start" data-delta="1">+1 min</button>
+          <button data-target="start" data-delta="-1">-1 min</button>
+          <button data-target="start" data-action="reset">Reset</button>
+          <button data-target="start" data-delta="10">+10 min</button>
+          <button data-target="start" data-delta="-10">-10 min</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="endSection">
+      <div class="header">End</div>
+      <div id="endDigital" class="digitalSmall">--:--</div>
+      <div class="clockBox" id="endClockBox">
+        <svg id="endClock" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" aria-label="End time analogue clock"></svg>
+        <div id="endButtons" class="btnPanel" role="group" aria-label="Adjust end time">
+          <button data-target="end" data-delta="1">+1 min</button>
+          <button data-target="end" data-delta="-1">-1 min</button>
+          <button data-target="end" data-action="reset">Reset</button>
+          <button data-target="end" data-delta="10">+10 min</button>
+          <button data-target="end" data-delta="-10">-10 min</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="extendedSection" style="display:none;">
+      <div class="header">Extra Time End</div>
+      <div id="extendedDigital" class="digitalSmall">--:--</div>
+      <div class="clockBox" id="extendedClockBox">
+        <svg id="extendedClock" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" aria-label="Extra time end analogue clock"></svg>
+        <div id="extendedButtons" class="btnPanel" role="group" aria-label="Adjust extended time">
+          <button data-target="extended" data-delta="1">+1 min</button>
+          <button data-target="extended" data-delta="-1">-1 min</button>
+          <button data-target="extended" data-action="reset">Reset</button>
+          <button data-target="extended" data-delta="10">+10 min</button>
+          <button data-target="extended" data-delta="-10">-10 min</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const LOGO_DATA_URL="";
+
+const DIGITAL_HALFWAY=0.5;
+const DIGITAL_Y_TWEAK=0.10;
+const DIGITAL_X_TWEAK=0.00;
+const ds=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--digital-scale'));
+const DIGITAL_SCALE=Number.isFinite(ds)?ds:0.75;
+const PANEL_TIMEOUT_MS=10000;
+
+const LOGO_Y_FRACTION=0.20;
+const LOGO_WIDTH_FRACTION=0.75;
+const LOGO_HEIGHT_FRACTION=0.225;
+
+const state={mainOffsetMs:0,start:roundToMinute(new Date()),end:roundToMinute(new Date()),extended:roundToMinute(new Date()),extendedEnabled:false};
+
+function roundToMinute(d){const nd=new Date(d);nd.setSeconds(0,0);return nd}
+function fmtDigitalHM(d){return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+
+function drawClock(svgId,dateObj,options={}){
+  const {showSeconds=true,smoothSeconds=true,faceColor='#fff',numbers=true,addLogo=false}=options;
+  const svg=document.getElementById(svgId); if(!svg) return;
+  svg.innerHTML='';
+  const cx=100,cy=100,r=90;
+
+  const hit=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  hit.setAttribute('x',0);hit.setAttribute('y',0);hit.setAttribute('width',200);hit.setAttribute('height',200);
+  hit.setAttribute('fill','transparent');hit.setAttribute('pointer-events','all');svg.appendChild(hit);
+
+  const face=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  face.setAttribute('cx',cx);face.setAttribute('cy',cy);face.setAttribute('r',r);
+  face.setAttribute('fill',faceColor);face.setAttribute('stroke','#000');face.setAttribute('stroke-width','3');svg.appendChild(face);
+
+  for(let i=0;i<60;i++){
+    const a=(i/60)*2*Math.PI,isH=i%5===0,len=isH?12:6,w=isH?3:1.5;
+    const x1=cx+Math.sin(a)*(r-8),y1=cy-Math.cos(a)*(r-8);
+    const x2=cx+Math.sin(a)*(r-8-len),y2=cy-Math.cos(a)*(r-8-len);
+    const mark=document.createElementNS('http://www.w3.org/2000/svg','line');
+    mark.setAttribute('x1',x1);mark.setAttribute('y1',y1);mark.setAttribute('x2',x2);mark.setAttribute('y2',y2);
+    mark.setAttribute('stroke','#000');mark.setAttribute('stroke-width',w);mark.setAttribute('stroke-linecap','round');svg.appendChild(mark);
+  }
+
+  if(numbers){
+    for(let i=1;i<=12;i++){
+      const a=(i/12)*2*Math.PI,nr=r-28,nx=cx+Math.sin(a)*nr,ny=cy-Math.cos(a)*nr;
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',nx);t.setAttribute('y',ny+5);t.setAttribute('fill','#000');
+      t.setAttribute('font-size','13');t.setAttribute('font-weight','600');t.setAttribute('text-anchor','middle');
+      t.textContent=String(i);svg.appendChild(t);
+    }
+  }
+
+  const h=dateObj.getHours()%12,m=dateObj.getMinutes(),sWhole=dateObj.getSeconds(),ms=dateObj.getMilliseconds();
+  const s=smoothSeconds?(sWhole+ms/1000):sWhole;
+  const hourAngle=((h+(m+s/60)/60)/12)*360,minAngle=((m+s/60)/60)*360;
+  drawHand(svg,cx,cy,hourAngle,52,6,'#000');
+  drawHand(svg,cx,cy,minAngle,72,4,'#000');
+  if(showSeconds){const secAngle=(s/60)*360;drawHand(svg,cx,cy,secAngle,80,1,'#800000')}
+
+  const cap=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  cap.setAttribute('cx',cx);cap.setAttribute('cy',cy);cap.setAttribute('r',3.5);cap.setAttribute('fill','#000');svg.appendChild(cap);
+
+  if(addLogo&&LOGO_DATA_URL){
+    const logoCenterX=cx;
+    const logoCenterY=cy - r*(DIGITAL_HALFWAY - DIGITAL_Y_TWEAK);
+    const logoW=r*LOGO_WIDTH_FRACTION,logoH=r*LOGO_HEIGHT_FRACTION;
+    const img=document.createElementNS('http://www.w3.org/2000/svg','image');
+    img.setAttribute('x',logoCenterX-logoW/2);img.setAttribute('y',logoCenterY-logoH/2);
+    img.setAttribute('width',logoW);img.setAttribute('height',logoH);
+    img.setAttribute('preserveAspectRatio','xMidYMid meet');img.setAttribute('style','pointer-events:none;');
+    try{img.setAttributeNS('http://www.w3.org/1999/xlink','href',LOGO_DATA_URL);}catch(e){}
+    img.setAttribute('href',LOGO_DATA_URL);
+    svg.appendChild(img);
+  }
+}
+function drawHand(svg,cx,cy,deg,len,w,color){
+  const rad=(Math.PI/180)*deg,x=cx+Math.sin(rad)*len,y=cy-Math.cos(rad)*len;
+  const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',cx);line.setAttribute('y1',cy);line.setAttribute('x2',x);line.setAttribute('y2',y);
+  line.setAttribute('stroke',color);line.setAttribute('stroke-width',w);line.setAttribute('stroke-linecap','round');svg.appendChild(line);
+}
+
+const mainDigitalEl=document.getElementById('mainDigital');
+const mainClockSvg=document.getElementById('mainClock');
+const mainClockBox=document.getElementById('mainClockBox');
+
+function getMainDisplayDate(){return new Date(Date.now()+state.mainOffsetMs)}
+function animateMainClock(){
+  const d=getMainDisplayDate();
+  drawClock('mainClock',d,{showSeconds:true,smoothSeconds:true,numbers:true,addLogo:true});
+  mainDigitalEl.textContent=d.toLocaleTimeString();
+  positionAndScaleMainDigital();
+  requestAnimationFrame(animateMainClock);
+}
+requestAnimationFrame(animateMainClock);
+
+window.addEventListener('resize',()=>{
+  fitSquare(mainClockBox,mainClockSvg);
+  fitSquare(startClockBox,startClockSvg);
+  fitSquare(endClockBox,endClockSvg);
+  if(state.extendedEnabled){fitSquare(extendedClockBox,extendedClockSvg)}
+  positionAndScaleMainDigital();
+});
+function positionAndScaleMainDigital(){
+  const rect=mainClockSvg.getBoundingClientRect();
+  const size=Math.min(rect.width,rect.height);
+  const radius=(size/2)*(90/100);
+  const centerX=rect.left+rect.width/2;
+  const centerY=rect.top+rect.height/2;
+  const targetX=centerX+size*DIGITAL_X_TWEAK;
+  const targetY=centerY + radius*LOGO_Y_FRACTION;
+  const fontPx=Math.max(16,size*0.12*DIGITAL_SCALE);
+  const padV=Math.max(4,size*0.008*DIGITAL_SCALE);
+  const padH=Math.max(6,size*0.012*DIGITAL_SCALE);
+  const brad=Math.max(6,size*0.02*DIGITAL_SCALE);
+  mainDigitalEl.style.left=`${targetX}px`;
+  mainDigitalEl.style.top=`${targetY}px`;
+  mainDigitalEl.style.fontSize=`${fontPx}px`;
+  mainDigitalEl.style.padding=`${padV}px ${padH}px`;
+  mainDigitalEl.style.borderRadius=`${brad}px`;
+}
+
+function renderStaticClocks(){
+  drawClock('startClock',state.start,{showSeconds:false,smoothSeconds:false,numbers:true});
+  drawClock('endClock',state.end,{showSeconds:false,smoothSeconds:false,numbers:true});
+  document.getElementById('startDigital').textContent=fmtDigitalHM(state.start);
+  document.getElementById('endDigital').textContent=fmtDigitalHM(state.end);
+  if(state.extendedEnabled){
+    drawClock('extendedClock',state.extended,{showSeconds:false,smoothSeconds:false,numbers:true});
+    document.getElementById('extendedDigital').textContent=fmtDigitalHM(state.extended);
+  }
+}
+renderStaticClocks();
+
+function adjust(which,mins){
+  if(which==='main'){state.mainOffsetMs+=mins*60000}
+  else if(which==='start'||which==='end'||which==='extended'){
+    state[which]=new Date(state[which].getTime()+mins*60000);
+    state[which].setSeconds(0,0);
+    renderStaticClocks();
+  }
+  resetPanelInactivityTimer();
+}
+function reset(which){
+  if(which==='main'){state.mainOffsetMs=0}
+  else if(which==='start'||which==='end'||which==='extended'){
+    state[which]=roundToMinute(new Date());
+    renderStaticClocks();
+  }
+  resetPanelInactivityTimer();
+}
+
+document.querySelectorAll('.btnPanel button').forEach(btn=>{
+  btn.addEventListener('click',e=>{
+    e.stopPropagation();
+    const target=e.currentTarget.getAttribute('data-target');
+    const deltaAttr=e.currentTarget.getAttribute('data-delta');
+    const action=e.currentTarget.getAttribute('data-action');
+    if(action==='reset'){reset(target)} else if(deltaAttr){adjust(target,parseInt(deltaAttr,10))}
+  });
+});
+
+let activePanelId=null,inactivityTimer=null;
+function showPanel(panelId){
+  if(activePanelId&&activePanelId!==panelId)hidePanel(activePanelId);
+  const p=document.getElementById(panelId);if(!p)return;
+  p.style.visibility='visible';
+  activePanelId=panelId;
+  resetPanelInactivityTimer();
+}
+function hidePanel(panelId){
+  const p=document.getElementById(panelId);if(p)p.style.visibility='hidden';
+  if(activePanelId===panelId)activePanelId=null;
+  clearPanelInactivityTimer();
+}
+function resetPanelInactivityTimer(){clearPanelInactivityTimer();inactivityTimer=setTimeout(()=>{if(activePanelId)hidePanel(activePanelId)},PANEL_TIMEOUT_MS)}
+function clearPanelInactivityTimer(){if(inactivityTimer){clearTimeout(inactivityTimer);inactivityTimer=null}}
+
+function insideInteractive(e){
+  return !!(
+    e.target.closest('.btnPanel')||
+    e.target.closest('#mainClickOverlay')||
+    e.target.closest('#mainClockArea')||
+    e.target.closest('#mainClockBox')||
+    e.target.closest('#mainClock')||
+    e.target.closest('#mainDigital')||
+    e.target.closest('#startSection')||
+    e.target.closest('#startClockBox')||
+    e.target.closest('#startClock')||
+    e.target.closest('#startDigital')||
+    e.target.closest('#endSection')||
+    e.target.closest('#endClockBox')||
+    e.target.closest('#endClock')||
+    e.target.closest('#endDigital')||
+    e.target.closest('#extendedSection')||
+    e.target.closest('#extendedClockBox')||
+    e.target.closest('#extendedClock')||
+    e.target.closest('#extendedDigital')
+  );
+}
+document.addEventListener('click',e=>{if(!insideInteractive(e)&&activePanelId)hidePanel(activePanelId)});
+document.getElementById('mainClickOverlay').addEventListener('click',e=>{e.stopPropagation();showPanel('mainButtons')});
+document.getElementById('startSection').addEventListener('click',e=>{e.stopPropagation();showPanel('startButtons')});
+document.getElementById('endSection').addEventListener('click',e=>{e.stopPropagation();showPanel('endButtons')});
+document.getElementById('extendedSection').addEventListener('click',e=>{e.stopPropagation();showPanel('extendedButtons')});
+
+const extendedSection=document.getElementById('extendedSection');
+const extendedToggle=document.getElementById('extendedToggle');
+extendedToggle.addEventListener('click',()=>{
+  state.extendedEnabled=!state.extendedEnabled;
+  extendedToggle.setAttribute('aria-pressed',String(state.extendedEnabled));
+  extendedSection.style.display=state.extendedEnabled?'grid':'none';
+  if(state.extendedEnabled){
+    renderStaticClocks();
+    fitSquare(extendedClockBox,extendedClockSvg);
+  }
+});
+
+const fsBtn=document.getElementById('fullscreenBtn');
+fsBtn.addEventListener('click',async()=>{
+  if(!document.fullscreenElement){
+    try{await document.documentElement.requestFullscreen();fsBtn.textContent='Exit Fullscreen';window.__ensureWakeLock&&window.__ensureWakeLock()}catch(e){}
+  }else{
+    try{await document.exitFullscreen();fsBtn.textContent='Enter Fullscreen';window.__ensureWakeLock&&window.__ensureWakeLock()}catch(e){}
+  }
+});
+document.addEventListener('fullscreenchange',()=>{fsBtn.textContent=document.fullscreenElement?'Exit Fullscreen':'Enter Fullscreen'});
+
+const startClockBox=document.getElementById('startClockBox');
+const startClockSvg=document.getElementById('startClock');
+const endClockBox=document.getElementById('endClockBox');
+const endClockSvg=document.getElementById('endClock');
+const extendedClockBox=document.getElementById('extendedClockBox');
+const extendedClockSvg=document.getElementById('extendedClock');
+function fitSquare(box,svg){const rect=box.getBoundingClientRect();const size=Math.min(rect.width,rect.height);if(svg){svg.style.width=size+'px';svg.style.height=size+'px'}}
+const roMain=new ResizeObserver(()=>fitSquare(mainClockBox,mainClockSvg));
+const roStart=new ResizeObserver(()=>fitSquare(startClockBox,startClockSvg));
+const roEnd=new ResizeObserver(()=>fitSquare(endClockBox,endClockSvg));
+const roExt=new ResizeObserver(()=>{if(state.extendedEnabled)fitSquare(extendedClockBox,extendedClockSvg)});
+roMain.observe(mainClockBox);roStart.observe(startClockBox);roEnd.observe(endClockBox);roExt.observe(extendedClockBox);
+fitSquare(mainClockBox,mainClockSvg);fitSquare(startClockBox,startClockSvg);fitSquare(endClockBox,endClockSvg);
+
+(()=>{
+  let wakeLock=null;
+  let firstGestureArmed=true;
+  async function requestWakeLock(){
+    if(!('wakeLock'in navigator)){return}
+    try{
+      if(wakeLock&&'release'in wakeLock){try{await wakeLock.release()}catch{}}
+      wakeLock=await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener?.('release',()=>{});
+    }catch(err){}
+  }
+  async function ensureWakeLock(){if('wakeLock'in navigator){try{await requestWakeLock()}catch{}}}
+  function onVisibilityOrFocusChange(){if(!document.hidden){ensureWakeLock()}}
+  window.addEventListener('load',()=>{ensureWakeLock();armFirstGesture()});
+  function armFirstGesture(){
+    if(!firstGestureArmed)return;firstGestureArmed=false;
+    const once={once:true,capture:true};
+    const handler=()=>ensureWakeLock();
+    window.addEventListener('pointerdown',handler,once);
+    window.addEventListener('keydown',handler,once);
+    window.addEventListener('touchend',handler,once);
+  }
+  document.addEventListener('visibilitychange',onVisibilityOrFocusChange);
+  window.addEventListener('focus',onVisibilityOrFocusChange);
+  window.addEventListener('orientationchange',()=>ensureWakeLock());
+  document.addEventListener('fullscreenchange',()=>ensureWakeLock());
+  window.__ensureWakeLock=ensureWakeLock;
+})();
+</script>
+</body>
+</html>
